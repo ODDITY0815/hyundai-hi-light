@@ -269,6 +269,7 @@ if "step" not in st.session_state: st.session_state.step = 1
 if "selected_interest" not in st.session_state: st.session_state.selected_interest = None
 if "selected_tags" not in st.session_state: st.session_state.selected_tags = {"누구": [], "위험": [], "우선순위": [], "변화": []}
 if "natural_language_inputs" not in st.session_state: st.session_state.natural_language_inputs = {"누구": "", "위험": "", "우선순위": "", "변화": ""}
+if "situation" not in st.session_state: st.session_state.situation = {"when": None, "where": None, "what": None, "text": ""}
 if "catalog_result" not in st.session_state: st.session_state.catalog_result = None
 
 # ============================================================================
@@ -487,6 +488,8 @@ def render_catalog_card(data):
                 <p>"{risk_scenario}"</p>
             </div>
             """, unsafe_allow_html=True)
+            
+            st.session_state.suggested_situation = risk_scenario
         
         return True
         
@@ -684,7 +687,33 @@ elif st.session_state.step == 1.5:
         json_str = st.session_state.catalog_result.replace("```json", "").replace("```", "").strip()
         data = json.loads(json_str)
         
-        render_catalog_card(data)
+        has_product = render_catalog_card(data)
+        
+        st.markdown("---")
+        
+        # 상황 분석 버튼 (제안된 상황 또는 직접 입력)
+        if has_product and "suggested_situation" in st.session_state:
+            if st.button("💬 이 상황, 자세히 알아보기", use_container_width=True, type="primary"):
+                st.session_state.situation["text"] = st.session_state.suggested_situation
+                st.session_state.step = 2
+                st.session_state.step_start_time = time.time()
+                
+                recommend.log_user_action(
+                    visitor_id=st.session_state.visitor_id,
+                    consult_count=st.session_state.consult_count,
+                    open_time_str=st.session_state.open_time_str,
+                    action_type="situation_explore_auto",
+                    user_input=st.session_state.suggested_situation,
+                    recommended_product="",
+                    duration=time.time() - st.session_state.step_start_time
+                )
+                
+                st.rerun()
+        
+        if st.button("✍️ 직접 상황 입력하기", use_container_width=True):
+            st.session_state.step = 2
+            st.session_state.step_start_time = time.time()
+            st.rerun()
         
         st.markdown("---")
         
@@ -766,8 +795,37 @@ elif st.session_state.step == 1.5:
         with st.expander("🔍 상세 오류 정보", expanded=False):
             st.code(f"JSON 파싱 오류: {str(e)}\n\n원본 데이터:\n{st.session_state.catalog_result}", language="text")
 
-# --- Step 2 & 3: Coming Soon ---
-elif st.session_state.step in [2, 3]:
+# --- Step 2: Situation Input ---
+elif st.session_state.step == 2:
+    st.subheader("어떤 상황인가요?")
+    
+    user_input = st.text_area("상황을 자유롭게 적어주세요", value=st.session_state.situation["text"], height=150, placeholder="예: 주말에 축구하다가 다리가 부러졌어요.")
+    st.session_state.situation["text"] = user_input
+    
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    if c1.button("⬅️ 이전"): 
+        st.session_state.step = 1.5
+        st.session_state.step_start_time = time.time()
+        st.rerun()
+    
+    if c2.button("분석 시작 🔍", type="primary", disabled=not user_input.strip()):
+        recommend.log_user_action(
+            visitor_id=st.session_state.visitor_id,
+            consult_count=st.session_state.consult_count,
+            open_time_str=st.session_state.open_time_str,
+            action_type="situation_input_manual",
+            user_input=user_input,
+            recommended_product="",
+            duration=time.time() - st.session_state.step_start_time
+        )
+        
+        st.session_state.step = 3
+        st.session_state.step_start_time = time.time()
+        st.rerun()
+
+# --- Step 3: Coming Soon (상세 분석) ---
+elif st.session_state.step == 3:
     st.markdown("""
     <div class="coming-soon-box">
         <div class="coming-soon-icon">🚧</div>
